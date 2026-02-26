@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Head Communication App</title>
+  <style>
+    /* ── Reset ─────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d0d0d;
+      color: #fff;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────── */
+    #header {
+      background: #111;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 2px solid #333;
+      flex-shrink: 0;
+    }
+    #header h1 { font-size: 1.4rem; color: #4fc3f7; }
+    #status-bar { display: flex; gap: 16px; align-items: center; font-size: 0.85rem; }
+    .status-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #666; display: inline-block; margin-right: 4px;
+    }
+    .status-dot.green  { background: #66bb6a; }
+    .status-dot.yellow { background: #ffd54f; }
+    .status-dot.red    { background: #ef5350; }
+
+    /* ── Calibration overlay ────────────────────────────────────── */
+    #calibration-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.93);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      gap: 16px;
+    }
+    #calibration-overlay h2 { font-size: 2.5rem; color: #4fc3f7; }
+    #calib-arrow {
+      font-size: 7rem;
+      color: #66bb6a;
+      line-height: 1;
+      transition: all 0.3s ease;
+    }
+    #calib-instruction {
+      font-size: 3rem;
+      font-weight: bold;
+      color: #fff;
+      text-align: center;
+      text-shadow: 0 0 24px #4fc3f7;
+    }
+    #calib-progress { font-size: 1.3rem; color: #aaa; }
+    #calib-timer {
+      font-size: 5rem;
+      font-weight: bold;
+      color: #ffd54f;
+      width: 120px; height: 120px;
+      border-radius: 50%;
+      border: 6px solid #ffd54f;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #calib-hint {
+      font-size: 1rem;
+      color: #666;
+      margin-top: 10px;
+      text-align: center;
+      max-width: 400px;
+      line-height: 1.6;
+    }
+
+    /* ── Main layout ─────────────────────────────────────────────── */
+    #main-layout {
+      flex: 1;
+      display: flex;
+      gap: 12px;
+      padding: 12px;
+      min-height: 0;
+    }
+
+    /* ── Button grid — 2 cols × 3 rows ──────────────────────────── */
+    #btn-grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .comm-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-radius: 22px;
+      border: 4px solid transparent;
+      cursor: default;
+      font-size: clamp(1.6rem, 3.2vw, 2.8rem);
+      font-weight: 800;
+      letter-spacing: 1px;
+      transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+      position: relative;
+      overflow: hidden;
+    }
+    .comm-btn .btn-icon {
+      font-size: clamp(2.2rem, 4vw, 3.8rem);
+      margin-bottom: 8px;
+      pointer-events: none;
+    }
+
+    /* Individual button colour schemes */
+    #btn-Water    { background: #0d47a1; color: #90caf9; }
+    #btn-Bathroom { background: #1b5e20; color: #a5d6a7; }
+    #btn-Yes      { background: #33691e; color: #dce775; }
+    #btn-No       { background: #b71c1c; color: #ef9a9a; }
+    #btn-Pain     { background: #e65100; color: #ffcc80; }
+    #btn-CallMom  { background: #4a148c; color: #ce93d8; }
+
+    /* Highlighted state — head is pointing at this button */
+    .comm-btn.highlighted {
+      transform: scale(1.07);
+      border-color: #ffffff;
+      box-shadow: 0 0 36px 8px rgba(255, 255, 255, 0.5);
+      z-index: 2;
+    }
+
+    /* Flash on blink-select */
+    @keyframes flash {
+      0%   { filter: brightness(1);   }
+      20%  { filter: brightness(3.5); }
+      40%  { filter: brightness(1);   }
+      60%  { filter: brightness(3.5); }
+      80%  { filter: brightness(1);   }
+      100% { filter: brightness(1.2); }
+    }
+    .comm-btn.flashing { animation: flash 0.65s ease-in-out; }
+
+    /* ── Side panel ──────────────────────────────────────────────── */
+    #side-panel {
+      width: 270px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* Camera preview */
+    #cam-container {
+      border-radius: 12px;
+      overflow: hidden;
+      border: 2px solid #333;
+      background: #000;
+      position: relative;
+    }
+    #cam-video {
+      width: 100%;
+      display: block;
+      transform: scaleX(-1); /* mirror so left/right feel natural */
+    }
+    #cam-canvas { display: none; }
+    #no-face-badge {
+      position: absolute;
+      top: 8px; left: 50%;
+      transform: translateX(-50%);
+      background: rgba(239,83,80,0.85);
+      color: #fff;
+      font-size: 0.75rem;
+      font-weight: bold;
+      padding: 3px 10px;
+      border-radius: 20px;
+      display: none;
+      white-space: nowrap;
+    }
+
+    /* Direction indicator grid */
+    #direction-display {
+      background: #111;
+      border-radius: 12px;
+      border: 1px solid #2a2a2a;
+      padding: 10px;
+      text-align: center;
+    }
+    #direction-display .panel-label {
+      color: #4fc3f7;
+      font-size: 0.75rem;
+      font-weight: bold;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+    #dir-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 4px;
+      width: 108px;
+      height: 108px;
+      margin: 0 auto;
+    }
+    .dir-cell {
+      border-radius: 7px;
+      background: #1e1e1e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      color: #444;
+      transition: background 0.18s, color 0.18s;
+    }
+    .dir-cell.active { background: #4fc3f7; color: #000; }
+
+    /* Info / telemetry box */
+    #info-box {
+      background: #111;
+      border-radius: 12px;
+      border: 1px solid #2a2a2a;
+      padding: 14px;
+      font-size: 0.82rem;
+      color: #999;
+      line-height: 1.9;
+      flex-shrink: 0;
+    }
+    #info-box .label { color: #4fc3f7; font-weight: 600; }
+
+    /* Blink hold progress bar */
+    #blink-bar-wrap {
+      background: #222;
+      border-radius: 8px;
+      overflow: hidden;
+      height: 16px;
+      margin-top: 4px;
+    }
+    #blink-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #ffd54f, #ef5350);
+      transition: width 0.08s linear;
+      border-radius: 8px;
+    }
+
+    /* Last spoken display */
+    #last-spoken {
+      background: #0a1a0a;
+      border-radius: 12px;
+      border: 1px solid #1b3a1b;
+      padding: 14px;
+      font-size: 1.1rem;
+      color: #66bb6a;
+      text-align: center;
+      font-weight: bold;
+      min-height: 54px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Scrollable log */
+    #log-box {
+      background: #111;
+      border-radius: 12px;
+      border: 1px solid #2a2a2a;
+      padding: 10px;
+      font-size: 0.73rem;
+      color: #666;
+      flex: 1;
+      overflow-y: auto;
+      min-height: 60px;
+      max-height: 120px;
+      font-family: monospace;
+      line-height: 1.6;
+    }
+    #log-box div:last-child { color: #888; }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════
+     CALIBRATION OVERLAY
+     Shown on load. Guides user through 5 gaze positions so the
+     server can record nose-tip reference coordinates for each
+     direction. Disappears automatically after 5 × 2 seconds.
+═══════════════════════════════════════════════════════════════ -->
+<div id="calibration-overlay">
+  <h2>🎯 Calibration</h2>
+  <div id="calib-arrow">⬤</div>
+  <div id="calib-instruction">Look Straight Ahead</div>
+  <div id="calib-progress">Step 1 of 5</div>
+  <div id="calib-timer">2</div>
+  <div id="calib-hint">
+    Hold your head still in each direction.<br>
+    The app learns your natural movement range.
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     HEADER
+═══════════════════════════════════════════════════════════════ -->
+<div id="header">
+  <h1>🧠 Head Communication</h1>
+  <div id="status-bar">
+    <span><span class="status-dot" id="dot-face"></span>Face</span>
+    <span><span class="status-dot" id="dot-cam"></span>Camera</span>
+    <span id="fps-display">-- FPS</span>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     MAIN LAYOUT  (grid | side-panel)
+═══════════════════════════════════════════════════════════════ -->
+<div id="main-layout">
+
+  <!-- ── Communication button grid ──────────────────────────── -->
+  <!--
+    Layout mapping (direction → button):
+      up-left      → Water       up-right      → Bathroom
+      center-left  → Yes         center-right  → No
+      down-left    → Pain        down-right    → Call Mom
+  -->
+  <div id="btn-grid">
+    <button class="comm-btn" id="btn-Water"    data-text="Water">
+      <span class="btn-icon">💧</span>Water
+    </button>
+    <button class="comm-btn" id="btn-Bathroom" data-text="I need the bathroom">
+      <span class="btn-icon">🚽</span>Bathroom
+    </button>
+    <button class="comm-btn" id="btn-Yes"      data-text="Yes">
+      <span class="btn-icon">✅</span>Yes
+    </button>
+    <button class="comm-btn" id="btn-No"       data-text="No">
+      <span class="btn-icon">❌</span>No
+    </button>
+    <button class="comm-btn" id="btn-Pain"     data-text="I am in pain">
+      <span class="btn-icon">😣</span>Pain
+    </button>
+    <button class="comm-btn" id="btn-CallMom"  data-text="Please call Mom">
+      <span class="btn-icon">📞</span>Call Mom
+    </button>
+  </div>
+
+  <!-- ── Side panel ──────────────────────────────────────────── -->
+  <div id="side-panel">
+
+    <!-- Camera preview -->
+    <div id="cam-container">
+      <video id="cam-video" autoplay playsinline muted></video>
+      <canvas id="cam-canvas"></canvas>
+      <div id="no-face-badge">⚠ No Face</div>
+    </div>
+
+    <!-- 3×3 direction indicator -->
+    <div id="direction-display">
+      <div class="panel-label">HEAD DIRECTION</div>
+      <div id="dir-grid">
+        <div class="dir-cell" id="dc-tl"></div>
+        <div class="dir-cell" id="dc-t">▲</div>
+        <div class="dir-cell" id="dc-tr"></div>
+        <div class="dir-cell" id="dc-l">◀</div>
+        <div class="dir-cell" id="dc-c">⬤</div>
+        <div class="dir-cell" id="dc-r">▶</div>
+        <div class="dir-cell" id="dc-bl"></div>
+        <div class="dir-cell" id="dc-b">▼</div>
+        <div class="dir-cell" id="dc-br"></div>
+      </div>
+    </div>
+
+    <!-- Telemetry -->
+    <div id="info-box">
+      <div><span class="label">EAR: </span><span id="ear-val">--</span></div>
+      <div><span class="label">Blink Hold: </span><span id="blink-val">0.0s</span></div>
+      <div id="blink-bar-wrap"><div id="blink-bar"></div></div>
+      <div style="margin-top:6px;">
+        <span class="label">Head X: </span><span id="head-x">--</span>
+      </div>
+      <div><span class="label">Head Y: </span><span id="head-y">--</span></div>
+    </div>
+
+    <!-- Last spoken -->
+    <div id="last-spoken">— ready —</div>
+
+    <!-- Activity log -->
+    <div id="log-box"></div>
+
+  </div><!-- /side-panel -->
+</div><!-- /main-layout -->
+
+
+<script>
+// ================================================================
+//  HEAD-CONTROLLED COMMUNICATION APP — FRONTEND
+// ================================================================
+//
+//  Flow:
+//    1. Request webcam via getUserMedia
+//    2. Run calibration sequence (5 steps × 2 sec)
+//       → POST frames to /process_calib so server records nose pos
+//    3. Main loop: capture frame every FRAME_MS → POST /process
+//       → server returns { direction, ear, blink_hold,
+//                          blink_triggered, face_detected }
+//    4. Highlight button matching direction
+//    5. On blink_triggered → flash button + speak via SpeechSynthesis
+//
+// ================================================================
+
+// ── Configuration ────────────────────────────────────────────────
+const FRAME_MS       = 66;    // ~15 FPS to server
+const BLINK_THRESH_S = 0.8;   // mirrors server EAR hold threshold
+const JPEG_QUALITY   = 0.6;   // lower = faster transmission
+
+// ── Direction → Button ID mapping ────────────────────────────────
+// The 6 communication buttons are mapped from the 6 non-center
+// diagonal/lateral positions of the 3×3 head-direction grid.
+const DIR_TO_BTN = {
+  'up-left'     : 'btn-Water',
+  'up-right'    : 'btn-Bathroom',
+  'center-left' : 'btn-Yes',
+  'center-right': 'btn-No',
+  'down-left'   : 'btn-Pain',
+  'down-right'  : 'btn-CallMom',
+};
+
+// Direction → which cell in the 3×3 compass to illuminate
+const DIR_TO_CELL = {
+  'up-left'      : 'dc-tl',
+  'up-center'    : 'dc-t',
+  'up-right'     : 'dc-tr',
+  'center-left'  : 'dc-l',
+  'center'       : 'dc-c',
+  'center-right' : 'dc-r',
+  'down-left'    : 'dc-bl',
+  'down-center'  : 'dc-b',
+  'down-right'   : 'dc-br',
+};
+
+// Calibration step definitions
+const CALIB_STEPS = [
+  { label: 'Look Straight Ahead', arrow: '⬤', dir: 'center' },
+  { label: 'Look LEFT',           arrow: '◀', dir: 'left'   },
+  { label: 'Look RIGHT',          arrow: '▶', dir: 'right'  },
+  { label: 'Look UP',             arrow: '▲', dir: 'up'     },
+  { label: 'Look DOWN',           arrow: '▼', dir: 'down'   },
+];
+const CALIB_HOLD_S = 2; // seconds held per calibration step
+
+// ── DOM references ────────────────────────────────────────────────
+const video         = document.getElementById('cam-video');
+const canvas        = document.getElementById('cam-canvas');
+const ctx           = canvas.getContext('2d');
+const calibOverlay  = document.getElementById('calibration-overlay');
+const calibInstr    = document.getElementById('calib-instruction');
+const calibArrow    = document.getElementById('calib-arrow');
+const calibProg     = document.getElementById('calib-progress');
+const calibTimer    = document.getElementById('calib-timer');
+const noFaceBadge   = document.getElementById('no-face-badge');
+const logBox        = document.getElementById('log-box');
+
+// ── Runtime state ─────────────────────────────────────────────────
+let currentHighlight  = null;   // currently highlighted button ID
+let processingFrame   = false;  // prevents request pileup
+let frameCount        = 0;
+let lastFpsTime       = Date.now();
+
+
+// ════════════════════════════════════════════════════════════════
+//  CAMERA
+// ════════════════════════════════════════════════════════════════
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 320, height: 240, facingMode: 'user' },
+      audio: false,
+    });
+    video.srcObject = stream;
+    await video.play();
+    canvas.width  = video.videoWidth  || 320;
+    canvas.height = video.videoHeight || 240;
+    setDot('dot-cam', 'green');
+    log('Camera ready ' + canvas.width + '×' + canvas.height);
+    startCalibration();
+  } catch (err) {
+    setDot('dot-cam', 'red');
+    log('ERROR: ' + err.message);
+    alert('Camera access denied. Please allow camera access and reload the page.');
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════
+//  CALIBRATION
+//  Cycles through 5 gaze directions, capturing frames to /process_calib.
+//  Server averages nose-tip positions per direction and stores them
+//  as movement reference ranges. After all steps, calls /calibrate_done.
+// ════════════════════════════════════════════════════════════════
+function startCalibration() {
+  let step = 0;
+
+  (function runStep() {
+    if (step >= CALIB_STEPS.length) {
+      // All steps complete — finalise calibration on server
+      fetch('/calibrate_done', { method: 'POST' })
+        .then(() => {
+          calibOverlay.style.display = 'none';
+          log('Calibration complete. Starting tracking.');
+          startFrameLoop();
+        })
+        .catch(() => {
+          // Server might not be present (standalone HTML use)
+          calibOverlay.style.display = 'none';
+          startFrameLoop();
+        });
+      return;
+    }
+
+    const s = CALIB_STEPS[step];
+    calibInstr.textContent = s.label;
+    calibArrow.textContent = s.arrow;
+    calibProg.textContent  = `Step ${step + 1} of ${CALIB_STEPS.length}`;
+
+    // Notify server which direction we're collecting
+    fetch('/calibrate_step', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step: s.dir }),
+    }).catch(() => {});
+
+    // Capture frames rapidly during this step
+    let rem = CALIB_HOLD_S;
+    calibTimer.textContent = rem;
+
+    const captureInt = setInterval(() => sendCalibFrame(s.dir), 180);
+    const countdown  = setInterval(() => {
+      rem--;
+      calibTimer.textContent = rem;
+      if (rem <= 0) {
+        clearInterval(captureInt);
+        clearInterval(countdown);
+        step++;
+        setTimeout(runStep, 300);
+      }
+    }, 1000);
+  })();
+}
+
+// Sends a single frame to the calibration endpoint
+function sendCalibFrame(dir) {
+  const frame = captureFrame();
+  if (!frame) return;
+  fetch('/process_calib', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ frame, dir }),
+  }).catch(() => {});
+}
+
+
+// ════════════════════════════════════════════════════════════════
+//  FRAME CAPTURE UTILITY
+//  Draws the video (mirrored) onto the hidden canvas,
+//  then exports as a base64 JPEG data URL.
+// ════════════════════════════════════════════════════════════════
+function captureFrame() {
+  if (!video || video.readyState < 2) return null;
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  // Mirror horizontally so head left = image left
+  ctx.save();
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, 0, 0);
+  ctx.restore();
+  return canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+}
+
+
+// ════════════════════════════════════════════════════════════════
+//  MAIN FRAME LOOP
+//  Runs every FRAME_MS. Sends a frame, receives tracking data,
+//  updates UI. Uses a "processingFrame" guard to prevent queuing
+//  up multiple simultaneous requests.
+// ════════════════════════════════════════════════════════════════
+function startFrameLoop() {
+  setInterval(async () => {
+    if (processingFrame) return;
+    const frame = captureFrame();
+    if (!frame) return;
+
+    processingFrame = true;
+    try {
+      const resp = await fetch('/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ frame }),
+      });
+      if (resp.ok) handleServerData(await resp.json());
+    } catch (_) {
+      // Server unreachable — no-op (keeps UI alive)
+    } finally {
+      processingFrame = false;
+    }
+
+    // FPS counter
+    frameCount++;
+    const now = Date.now();
+    if (now - lastFpsTime >= 1000) {
+      document.getElementById('fps-display').textContent = frameCount + ' FPS';
+      frameCount = 0;
+      lastFpsTime = now;
+    }
+  }, FRAME_MS);
+}
+
+
+// ════════════════════════════════════════════════════════════════
+//  HANDLE SERVER RESPONSE
+//  Response shape:
+//    {
+//      face_detected  : bool,
+//      direction      : string,   // e.g. "up-left", "center"
+//      ear            : float,    // Eye Aspect Ratio (bilateral avg)
+//      blink_hold     : float,    // seconds eyes have been closed
+//      blink_triggered: bool,     // true for one frame on selection
+//      head_x         : float,    // normalised nose X (0–1)
+//      head_y         : float,    // normalised nose Y (0–1)
+//    }
+// ════════════════════════════════════════════════════════════════
+function handleServerData(data) {
+  // ── Face status ───────────────────────────────────────────────
+  const faceOk = data.face_detected;
+  setDot('dot-face', faceOk ? 'green' : 'red');
+  noFaceBadge.style.display = faceOk ? 'none' : 'block';
+
+  if (!faceOk) {
+    clearHighlight();
+    return;
+  }
+
+  // ── Update telemetry panel ────────────────────────────────────
+  document.getElementById('ear-val').textContent   = (data.ear    || 0).toFixed(3);
+  document.getElementById('head-x').textContent    = (data.head_x || 0).toFixed(3);
+  document.getElementById('head-y').textContent    = (data.head_y || 0).toFixed(3);
+  document.getElementById('blink-val').textContent = (data.blink_hold || 0).toFixed(2) + 's';
+
+  // Blink hold progress bar — fills from 0 → 100% as blink_hold → BLINK_THRESH_S
+  const pct = Math.min(100, ((data.blink_hold || 0) / BLINK_THRESH_S) * 100);
+  document.getElementById('blink-bar').style.width = pct + '%';
+
+  // ── Direction indicator ───────────────────────────────────────
+  updateDirGrid(data.direction);
+
+  // ── Button highlight ──────────────────────────────────────────
+  // Head direction maps to one of the 6 communication buttons.
+  // "center" or unmapped directions → clear highlight.
+  const btnId = DIR_TO_BTN[data.direction] || null;
+  if (btnId !== currentHighlight) {
+    clearHighlight();
+    if (btnId) {
+      document.getElementById(btnId).classList.add('highlighted');
+      currentHighlight = btnId;
+    }
+  }
+
+  // ── Blink selection ───────────────────────────────────────────
+  // Server fires blink_triggered=true for exactly one response
+  // frame when eyes have been closed >= BLINK_HOLD_S and
+  // the cooldown has elapsed.
+  if (data.blink_triggered && currentHighlight) {
+    activateButton(currentHighlight);
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════
+//  BUTTON ACTIVATION
+//  Triggered by a confirmed blink selection.
+//  1. Flash animation via CSS class
+//  2. Update "last spoken" display
+//  3. Speak text via browser SpeechSynthesis API
+// ════════════════════════════════════════════════════════════════
+function activateButton(btnId) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+
+  const text = btn.getAttribute('data-text');
+
+  // Flash animation
+  btn.classList.add('flashing');
+  btn.addEventListener('animationend', () => btn.classList.remove('flashing'), { once: true });
+
+  // Update display
+  document.getElementById('last-spoken').textContent = '🔊 ' + text;
+  log('Selected: ' + text);
+
+  // Speak
+  speakText(text);
+}
+
+
+// ════════════════════════════════════════════════════════════════
+//  SPEECH SYNTHESIS
+//  Uses the browser's built-in SpeechSynthesis API — works offline,
+//  no external service needed. Prefers a Google English voice if
+//  available for clarity.
+// ════════════════════════════════════════════════════════════════
+function speakText(text) {
+  if (!('speechSynthesis' in window)) {
+    console.warn('SpeechSynthesis not supported in this browser.');
+    return;
+  }
+  window.speechSynthesis.cancel(); // stop any in-progress speech
+
+  const utt    = new SpeechSynthesisUtterance(text);
+  utt.rate     = 0.85;   // slightly slower — easier to understand
+  utt.pitch    = 1.1;
+  utt.volume   = 1.0;
+  utt.lang     = 'en-US';
+
+  // Pick a high-quality voice if available
+  const voices   = window.speechSynthesis.getVoices();
+  const preferred = voices.find(v =>
+    v.lang.startsWith('en') &&
+    (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Premium'))
+  );
+  if (preferred) utt.voice = preferred;
+
+  window.speechSynthesis.speak(utt);
+}
+
+// Load voice list asynchronously (browser fires this event once ready)
+if (window.speechSynthesis) {
+  window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+}
+
+
+// ════════════════════════════════════════════════════════════════
+//  UI HELPERS
+// ════════════════════════════════════════════════════════════════
+
+/** Remove highlight from all buttons */
+function clearHighlight() {
+  document.querySelectorAll('.comm-btn.highlighted')
+    .forEach(b => b.classList.remove('highlighted'));
+  currentHighlight = null;
+}
+
+/** Set a status dot colour */
+function setDot(id, color) {
+  document.getElementById(id).className = 'status-dot ' + color;
+}
+
+/** Illuminate the correct cell in the 3×3 direction compass */
+function updateDirGrid(dir) {
+  document.querySelectorAll('.dir-cell').forEach(c => c.classList.remove('active'));
+  const cellId = DIR_TO_CELL[dir];
+  if (cellId) document.getElementById(cellId).classList.add('active');
+}
+
+/** Append a timestamped line to the activity log */
+function log(msg) {
+  const t   = new Date().toLocaleTimeString('en', { hour12: false });
+  const div = document.createElement('div');
+  div.textContent = `[${t}] ${msg}`;
+  logBox.appendChild(div);
+  logBox.scrollTop = logBox.scrollHeight;
+  // Keep log size manageable
+  while (logBox.children.length > 40) logBox.removeChild(logBox.firstChild);
+}
+
+
+// ════════════════════════════════════════════════════════════════
+//  BOOT
+// ════════════════════════════════════════════════════════════════
+startCamera();
+</script>
+</body>
+</html>
