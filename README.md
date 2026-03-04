@@ -1,4 +1,4 @@
-# 🧠 Head-Controlled Communication App
+# 🧠 BlinkSpeak
 
 A web-based assistive communication tool for children with limited mobility. Uses only a webcam — no special hardware required. The child controls the interface entirely through **head movements** and **sustained blinks**.
 
